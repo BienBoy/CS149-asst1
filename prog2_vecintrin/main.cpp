@@ -243,13 +243,65 @@ void clampedExpSerial(float* values, int* exponents, float* output, int N) {
 void clampedExpVector(float* values, int* exponents, float* output, int N) {
 
   //
-  // CS149 STUDENTS TODO: Implement your vectorized version of
+  // CS149 STUDENTS Done: Implement your vectorized version of
   // clampedExpSerial() here.
   //
   // Your solution should work for any value of
   // N and VECTOR_WIDTH, not just when VECTOR_WIDTH divides N
   //
-  
+
+    __cs149_vec_float x, result;
+    __cs149_vec_int y, count;
+    // 全零
+    __cs149_vec_int intZero = _cs149_vset_int(0);
+    // 全一
+    __cs149_vec_int intOne = _cs149_vset_int(1);
+    __cs149_vec_float floatOne = _cs149_vset_float(1.f);
+    // 上限，用于限制结果
+    __cs149_vec_float limit = _cs149_vset_float(9.999999f);
+    __cs149_mask maskAll, maskIsZero, maskIsNotZero, maskPositive;
+    __cs149_mask maskGtLimit;
+
+    for (int i = 0; i < N; i += VECTOR_WIDTH) {
+        int width = min(VECTOR_WIDTH, N - i);
+        maskAll = _cs149_init_ones(width);
+        maskIsZero = _cs149_init_ones(0);
+        maskPositive = _cs149_init_ones(0);
+        maskGtLimit = _cs149_init_ones(0);
+
+        // load
+        _cs149_vload_float(x, values + i, maskAll);                              // float x = values[i];
+        _cs149_vload_int(y, exponents + i, maskAll);                             // int y = exponents[i];
+
+        // 条件判断
+        _cs149_veq_int(maskIsZero, y, intZero, maskAll);                       // if (y == 0) {
+
+        // 执行条件为真时的计算
+        _cs149_vmove_float(result, floatOne, maskIsZero);                         // output[i] = 1.f;
+
+        // else条件
+        maskIsNotZero = _cs149_mask_not(maskIsZero);                                    // } else {
+
+        // 执行条件为假时的计算
+        _cs149_vmove_float(result, x, maskIsNotZero);                             // float result = x;
+        _cs149_vsub_int(count, y, intOne, maskIsNotZero);                      // int count = y - 1;
+        _cs149_vgt_int(maskPositive, count, intZero, maskIsNotZero);           // count > 0
+        while (_cs149_cntbits(maskPositive)) {                                         // while (count > 0) {
+            _cs149_vmult_float(result, result, x, maskPositive);               // result *= x;
+            _cs149_vsub_int(count, count, intOne, maskPositive);              // count--;
+            maskPositive = _cs149_init_ones(0);
+            _cs149_vgt_int(maskPositive, count, intZero, maskIsNotZero);       // count > 0
+        }
+
+        // 条件判断
+        _cs149_vgt_float(maskGtLimit, result, limit, maskIsNotZero);           // if (result > 9.999999f) {
+
+        // 执行条件为真的计算
+        _cs149_vmove_float(result, limit, maskGtLimit);                           // result = 9.999999f;
+
+        // store
+        _cs149_vstore_float(output + i, result, maskAll);                       // output[i] = result;
+    }
 }
 
 // returns the sum of all elements in values
@@ -268,13 +320,34 @@ float arraySumSerial(float* values, int N) {
 float arraySumVector(float* values, int N) {
   
   //
-  // CS149 STUDENTS TODO: Implement your vectorized version of arraySumSerial here
+  // CS149 STUDENTS Done: Implement your vectorized version of arraySumSerial here
   //
-  
-  for (int i=0; i<N; i+=VECTOR_WIDTH) {
+    __cs149_vec_float x, result = _cs149_vset_float(0.f);
+    __cs149_mask maskAll=_cs149_init_ones();
+    for (int i = 0; i < N; i += VECTOR_WIDTH) {
+        // load
+        _cs149_vload_float(x, values + i, maskAll);
+        // 计算
+        _cs149_vadd_float(result, result, x, maskAll);
+    }
 
-  }
+    // VECTOR_WIDTH一定是2^n
+    __cs149_vec_float zero = _cs149_vset_float(0.f);
+    int left = VECTOR_WIDTH;
+    while (left) {
+        __cs149_mask mask = _cs149_init_ones(left);
+        mask = _cs149_mask_not(mask);
+        _cs149_vmove_float(result, zero, mask);
+        _cs149_hadd_float(result, result);
+        _cs149_interleave_float(result, result);
+        left >>= 1;
+    }
 
-  return 0.0;
+    // store
+    float sum;
+    __cs149_mask maskResult=_cs149_init_ones(1);
+    _cs149_vstore_float(&sum, result, maskResult);
+
+    return sum;
 }
 
